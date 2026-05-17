@@ -48,7 +48,6 @@ class Session:
         success = self._file_manager.move_file(current_file, dest_config.path)
         if success:
             self._history.append(MoveHistory(current_file, source_config.path, dest_config.path))
-            source_config.mark_as_moved()
             source_config.load_files()
         return success
 

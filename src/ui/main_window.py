@@ -1601,7 +1601,13 @@ class MainWindow(QMainWindow):
     def _flash_button(self, btn: QPushButton) -> None:
         original_style = btn.styleSheet()
         btn.setStyleSheet(original_style + "border: 2px solid #4a9eff;")
-        QTimer.singleShot(180, lambda b=btn, s=original_style: b.setStyleSheet(s))
+        QTimer.singleShot(180, lambda b=btn, s=original_style: self._restore_button_style(b, s))
+
+    def _restore_button_style(self, btn: QPushButton, style: str) -> None:
+        try:
+            btn.setStyleSheet(style)
+        except RuntimeError:
+            pass
     
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if self.pages.currentIndex() != 1:
