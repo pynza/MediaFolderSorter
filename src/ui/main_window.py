@@ -1624,17 +1624,17 @@ class MainWindow(QMainWindow):
         if modifiers & Qt.KeyboardModifier.AltModifier:
             key_text += "Alt+"
         
-        if Qt.Key_0 <= key <= Qt.Key_9 or Qt.Key_A <= key <= Qt.Key_Z:
+        if Qt.Key.Key_0 <= key <= Qt.Key.Key_9 or Qt.Key.Key_A <= key <= Qt.Key.Key_Z:
             key_text += chr(key)
         else:
             key_map = {
-                Qt.Key_Left: "Left",
-                Qt.Key_Right: "Right",
-                Qt.Key_Up: "Up",
-                Qt.Key_Down: "Down",
-                Qt.Key_Space: "Space",
-                Qt.Key_Backspace: "Backspace",
-                Qt.Key_Delete: "Delete",
+                Qt.Key.Key_Left: "Left",
+                Qt.Key.Key_Right: "Right",
+                Qt.Key.Key_Up: "Up",
+                Qt.Key.Key_Down: "Down",
+                Qt.Key.Key_Space: "Space",
+                Qt.Key.Key_Backspace: "Backspace",
+                Qt.Key.Key_Delete: "Delete",
             }
             key_text += key_map.get(key, "")
         
