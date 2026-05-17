@@ -49,7 +49,14 @@ class Session:
         if success:
             self._history.append(MoveHistory(current_file, source_config.path, dest_config.path))
             source_config.load_files()
+            self._advance_to_next(source_config, current_file.name)
         return success
+
+    def _advance_to_next(self, source_config: FolderConfig, sorted_name: str) -> None:
+        for i, f in enumerate(source_config.files):
+            if f.name > sorted_name:
+                source_config.file_index = i
+                return
 
     def revert_last(self) -> bool:
         if not self._history:
@@ -65,6 +72,7 @@ class Session:
                         if source.path == move.source_path:
                             source.load_files()
                             return True
+        self._history.append(move)
         return False
 
     def get_total_files(self) -> int:

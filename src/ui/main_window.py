@@ -1624,8 +1624,8 @@ class MainWindow(QMainWindow):
         if modifiers & Qt.KeyboardModifier.AltModifier:
             key_text += "Alt+"
         
-        if event.text() and event.text().isprintable():
-            key_text += event.text().upper()
+        if Qt.Key_0 <= key <= Qt.Key_9 or Qt.Key_A <= key <= Qt.Key_Z:
+            key_text += chr(key)
         else:
             key_map = {
                 Qt.Key_Left: "Left",
@@ -1647,7 +1647,7 @@ class MainWindow(QMainWindow):
         elif key_text in self._dest_buttons:
             btn = self._dest_buttons[key_text]
             for i, dest in enumerate(self.session.destination_folders):
-                if self.setup_page.dest_folders[i][0] == dest.name:
+                if self.setup_page.keybindings.get(f'dest_{i}', '') == key_text:
                     self._sort_file(dest, btn)
                     break
         else:
