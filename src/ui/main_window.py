@@ -763,7 +763,7 @@ class SetupPage(QWidget):
         layout.setSpacing(10)
         
         title_layout = QHBoxLayout()
-        title = QLabel("SortMyMedia")
+        title = QLabel("MediaFolderSorter")
         title.setStyleSheet("font-size: 24px; font-weight: bold; color: #4fc3f7;")
         title_layout.addWidget(title)
         
@@ -1339,7 +1339,7 @@ class MainWindow(QMainWindow):
         self.file_manager = FileManager()
         self.current_pixmap: Optional[QPixmap] = None
         
-        self.setWindowTitle("SortMyMedia")
+        self.setWindowTitle("MediaFolderSorter")
         self.setMinimumSize(900, 700)
         self.setStyleSheet(DARK_STYLE)
         

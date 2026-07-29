@@ -38,7 +38,7 @@ class AppConfig:
 class ConfigManager:
     def __init__(self, config_dir: Optional[Path] = None):
         if config_dir is None:
-            config_dir = Path.home() / ".sortmymedia"
+            config_dir = Path.home() / ".mediafoldersorter"
         self.config_dir = config_dir
         self.configs_dir = self.config_dir / "configs"
         self.configs_dir.mkdir(parents=True, exist_ok=True)

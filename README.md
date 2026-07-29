@@ -1,4 +1,4 @@
-# SortMyMedia
+# MediaFolderSorter
 
 A modern GUI application for manually sorting media files from source folders to destination folders with real-time preview.
 
@@ -6,7 +6,7 @@ A modern GUI application for manually sorting media files from source folders to
 
 ## Overview
 
-SortMyMedia is a simple yet powerful tool for organizing your media files. Instead of automatic sorting, it lets you manually preview and categorize each file with a single click or keypress.
+MediaFolderSorter is a simple yet powerful tool for organizing your media files. Instead of automatic sorting, it lets you manually preview and categorize each file with a single click or keypress.
 
 ![Main interface showing folder selection and configuration](https://github.com/user-attachments/assets/f6f1621b-9214-48ea-9cd3-dececa9aa321)
 
@@ -32,7 +32,7 @@ Assign custom keyboard and mouse shortcuts to any destination folder for lightni
 - **Save configurations**: Store your folder selections with custom names
 - **Load configurations**: Quick switch between saved setups
 - **Import/Export**: Share configurations as YAML files
-- Configurations stored in `~/.sortmymedia/configs/`
+- Configurations stored in `~/.mediafoldersorter/configs/`
 
 ![Configuration management dialog](https://github.com/user-attachments/assets/58e92512-46cc-4d56-8436-2376f72504a5)
 
@@ -40,8 +40,8 @@ Assign custom keyboard and mouse shortcuts to any destination folder for lightni
 
 ```bash
 # Clone the repository
-git clone https://github.com/pinzauti/SortMyMedia.git
-cd SortMyMedia
+git clone https://github.com/pinzauti/MediaFolderSorter.git
+cd MediaFolderSorter
 
 # Create virtual environment (recommended)
 python3 -m venv venv
