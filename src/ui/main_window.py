@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFileDialog, QListWidget, QFrame, QMessageBox,
     QSizePolicy, QScrollArea, QStatusBar, QStackedWidget, QInputDialog,
-    QListWidgetItem, QDialog, QSlider, QFormLayout, QLineEdit
+    QListWidgetItem, QDialog, QSlider, QFormLayout, QLineEdit, QTextBrowser
 )
 from PyQt6.QtCore import pyqtSignal, QTimer, QUrl, Qt, QSize, QObject
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -17,6 +17,8 @@ from src.logic.session import Session
 from src.models.folder_config import FolderConfig
 from src.logic.file_manager import FileManager
 from src.logic.config_manager import ConfigManager
+from src.logic import previews
+from src.logic.previews import DocConverter
 
 try:
     from PIL import Image
@@ -611,6 +613,12 @@ class KeyBindingsDialog(QDialog):
         self.undo_key.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self._setup_key_capture(self.undo_key, 'undo', 'Undo')
         nav_layout.addRow("Undo:", self.undo_key)
+
+        self.trash_key = QLineEdit(self.keybindings.get('trash', 'Delete'))
+        self.trash_key.setReadOnly(True)
+        self.trash_key.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self._setup_key_capture(self.trash_key, 'trash', 'Trash')
+        nav_layout.addRow("Move to trash:", self.trash_key)
         
         layout.addWidget(nav_frame)
         
@@ -752,7 +760,8 @@ class SetupPage(QWidget):
         self.keybindings: dict = {
             'previous': 'Left',
             'next': 'Right',
-            'undo': 'Z'
+            'undo': 'Z',
+            'trash': 'Delete'
         }
         
         self._create_layout()
@@ -919,9 +928,17 @@ class SetupPage(QWidget):
         self.keybindings = {
             'previous': 'Left',
             'next': 'Right',
-            'undo': 'Z'
+            'undo': 'Z',
+            'trash': 'Delete'
         }
-        
+
+        kb = getattr(config, 'keybindings', None)
+        if kb is not None:
+            self.keybindings.update({
+                'previous': kb.previous, 'next': kb.next,
+                'undo': kb.undo, 'trash': getattr(kb, 'trash', 'Delete'),
+            })
+
         for path_str in config.sources:
             path = Path(path_str)
             if path.exists():
@@ -1074,9 +1091,12 @@ class SetupPage(QWidget):
             self._check_ready()
     
     def _check_ready(self) -> None:
-        if self.source_folders and self.dest_folders:
+        if self.source_folders:
             self.start_btn.setEnabled(True)
-            self.status_label.setText(f"Ready! {len(self.source_folders)} source(s), {len(self.dest_folders)} destination(s)")
+            if self.dest_folders:
+                self.status_label.setText(f"Ready! {len(self.source_folders)} source(s), {len(self.dest_folders)} destination(s)")
+            else:
+                self.status_label.setText(f"Ready! {len(self.source_folders)} source(s) — keep / trash mode (no destinations)")
             self.status_label.setStyleSheet("color: #4caf50;")
         else:
             self.start_btn.setEnabled(False)
@@ -1098,10 +1118,12 @@ class ImageViewer(QLabel):
     
     def set_pixmap(self, pixmap: QPixmap) -> None:
         self._pixmap = pixmap
+        self.setText("")
         self.update()
     
     def clear(self) -> None:
         self._pixmap = None
+        self.update()
         self.setText("No preview available")
         self.setStyleSheet("background-color: #121212; border-radius: 8px; color: #666666; font-size: 18px;")
     
@@ -1357,10 +1379,24 @@ class MainWindow(QMainWindow):
         self.keybindings: dict = {
             'previous': 'Left',
             'next': 'Right',
-            'undo': 'Z'
+            'undo': 'Z',
+            'trash': 'Delete'
         }
         self._dest_buttons: dict[str, QPushButton] = {}
-        
+
+        # Paged documents (PDF and office files rendered to PDF)
+        self._doc_source: Optional[Path] = None   # file being shown
+        self._doc_pdf: Optional[Path] = None      # PDF actually rendered
+        self._doc_page = 0
+        self._doc_pages = 0
+        self.converter = DocConverter(self)
+        self.converter.converted.connect(self._on_doc_converted)
+        self.converter.failed.connect(self._on_doc_failed)
+
+    def closeEvent(self, event) -> None:
+        self.converter.shutdown()
+        super().closeEvent(event)
+
     def _on_start_sorting(self) -> None:
         if not self.setup_page.source_folders:
             self.close()
@@ -1421,8 +1457,15 @@ class MainWindow(QMainWindow):
         self.viewer_container = QStackedWidget()
         self.image_viewer = ImageViewer()
         self.video_player = VideoPlayerWidget()
+        self.text_viewer = QTextBrowser()
+        self.text_viewer.setOpenExternalLinks(False)
+        self.text_viewer.setOpenLinks(False)
+        self.text_viewer.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.text_viewer.setStyleSheet(
+            "QTextBrowser { background-color: #121212; border-radius: 8px; padding: 16px; font-size: 14px; }")
         self.viewer_container.addWidget(self.image_viewer)
         self.viewer_container.addWidget(self.video_player)
+        self.viewer_container.addWidget(self.text_viewer)
         self.viewer_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.viewer_container, stretch=1)
         
@@ -1452,7 +1495,14 @@ class MainWindow(QMainWindow):
         self.revert_btn.setStyleSheet("background-color: #c0392b;")
         self.revert_btn.clicked.connect(self._revert_last)
         controls_layout.addWidget(self.revert_btn)
-        
+
+        trash_key = self.keybindings.get('trash', 'Delete')
+        self.trash_btn = QPushButton(f"🗑 Trash [{trash_key}]" if trash_key else "🗑 Trash")
+        self.trash_btn.setStyleSheet("background-color: #7f1d1d;")
+        self.trash_btn.setToolTip("Move the current file to the system trash (undoable)")
+        self.trash_btn.clicked.connect(self._trash_file)
+        controls_layout.addWidget(self.trash_btn)
+
         controls_layout.addSpacing(20)
         
         self.sort_buttons_frame = QWidget()
@@ -1510,29 +1560,127 @@ class MainWindow(QMainWindow):
             if key:
                 self._dest_buttons[key] = btn
     
+    def _show_image_page(self) -> None:
+        self.viewer_container.setCurrentIndex(0)
+        self.viewer = self.image_viewer
+
     def _display_file(self, path: Path) -> None:
-        ext = path.suffix.lower()
-        image_exts = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}
-        video_exts = {'.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv'}
-        
-        if ext in image_exts:
-            self.viewer_container.setCurrentIndex(0)
-            self.viewer = self.image_viewer
+        self._doc_source = None
+        self._doc_pdf = None
+        self._doc_page = 0
+        self._doc_pages = 0
+        kind = previews.classify(path)
+
+        if kind == 'image':
+            self._show_image_page()
             self._display_image(path)
-        elif ext == '.pdf' and PYMUPDF_AVAILABLE:
-            self.viewer_container.setCurrentIndex(0)
-            self.viewer = self.image_viewer
+        elif kind == 'pdf' and PYMUPDF_AVAILABLE:
+            self._show_image_page()
+            self._doc_source = path
             self._display_pdf(path)
-        elif ext in video_exts:
+        elif kind == 'video':
             self.video_player.clear()
             self.viewer_container.setCurrentIndex(1)
             self.video_player.load_video(path)
+        elif kind == 'office':
+            self._show_image_page()
+            self._display_office(path)
+        elif kind in ('text', 'markdown'):
+            self._display_text(path, markdown=(kind == 'markdown'))
         else:
-            self.viewer_container.setCurrentIndex(0)
-            self.viewer = self.image_viewer
+            self._show_image_page()
             self.viewer.clear()
-            self.viewer.setText(f"📄 {ext.upper()} file")
-    
+            self.viewer.setText(f"📄 {path.suffix.upper() or 'Unknown'} file\n(no preview)")
+        self._prefetch_next()
+
+    def _display_text(self, path: Path, markdown: bool = False) -> None:
+        try:
+            text, truncated = previews.read_text(path)
+        except OSError as e:
+            self._show_image_page()
+            self.viewer.clear()
+            self.viewer.setText(f"Error reading file\n{e}")
+            return
+        self.viewer_container.setCurrentIndex(2)
+        if markdown:
+            self.text_viewer.setMarkdown(text)
+        else:
+            font = QFont("monospace")
+            font.setStyleHint(QFont.StyleHint.Monospace)
+            self.text_viewer.setFont(font)
+            self.text_viewer.setPlainText(text)
+        if truncated:
+            self.text_viewer.append("\n… (preview truncated)")
+        self.text_viewer.verticalScrollBar().setValue(0)
+
+    def _display_office(self, path: Path) -> None:
+        pdf = self.converter.request(path, priority=True) if PYMUPDF_AVAILABLE else None
+        if pdf is not None:
+            self._doc_source = path
+            self._display_pdf(pdf)
+            return
+        thumb = previews.embedded_thumbnail(path)
+        status = ("rendering with LibreOffice…" if self.converter.available and PYMUPDF_AVAILABLE
+                  else "install LibreOffice for a full preview")
+        if thumb:
+            img = QImage.fromData(thumb)
+            if not img.isNull():
+                self.current_pixmap = QPixmap.fromImage(img)
+                self.viewer.set_pixmap(self.current_pixmap)
+                self.file_size_label.setText(f"{self.file_size_label.text()} · {status}")
+                return
+        self.viewer.clear()
+        self.viewer.setText(f"📄 {path.suffix.upper()} document\n({status})")
+
+    def _on_doc_converted(self, src: str, pdf: str) -> None:
+        if self.pages.currentIndex() != 1:
+            return
+        _, current = self._get_current_file()
+        if current is not None and str(current) == src:
+            self._doc_source = current
+            self._display_pdf(Path(pdf))
+
+    def _on_doc_failed(self, src: str, message: str) -> None:
+        _, current = self._get_current_file()
+        if current is None or str(current) != src or self._doc_pdf is not None:
+            return
+        if self.image_viewer._pixmap is None:
+            self.image_viewer.clear()
+            self.image_viewer.setText(
+                f"📄 {current.suffix.upper()} document\n(preview failed: {message[:200]})")
+        else:
+            self._update_size_label(current)
+
+    def _prefetch_next(self) -> None:
+        """Start converting the next office document in the background."""
+        if not self.converter.available or not PYMUPDF_AVAILABLE:
+            return
+        source, _ = self._get_current_file()
+        if source is None:
+            return
+        n = len(source.files)
+        for step in range(1, min(n, 4)):
+            nxt = source.files[(source.file_index + step) % n]
+            if previews.classify(nxt) == 'office':
+                self.converter.request(nxt)
+                return
+
+    def _update_size_label(self, path: Path) -> None:
+        try:
+            text = self.file_manager.get_file_size(path)
+        except OSError:
+            text = ""
+        if self._doc_pages > 1:
+            text += f" · page {self._doc_page + 1}/{self._doc_pages} (PgUp/PgDn)"
+        self.file_size_label.setText(text)
+
+    def _change_page(self, delta: int) -> None:
+        if self._doc_pdf is None or self._doc_pages <= 1:
+            return
+        page = max(0, min(self._doc_pages - 1, self._doc_page + delta))
+        if page != self._doc_page:
+            self._display_pdf(self._doc_pdf, page)
+
     def _display_image(self, path: Path) -> None:
         if not PIL_AVAILABLE:
             self.viewer.clear()
@@ -1556,34 +1704,37 @@ class MainWindow(QMainWindow):
             self.current_pixmap = QPixmap.fromImage(qimage)
             self.viewer.set_pixmap(self.current_pixmap)
         except Exception as e:
+            pixmap = QPixmap(str(path))
+            if not pixmap.isNull():
+                self.current_pixmap = pixmap
+                self.viewer.set_pixmap(pixmap)
+                return
             self.viewer.clear()
             self.viewer.setText(f"Error loading image\n{e}")
     
-    def _display_pdf(self, path: Path) -> None:
+    def _display_pdf(self, path: Path, page_no: int = 0) -> None:
         try:
-            doc = fitz.open(path)
-            page = doc[0]
-            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-            
-            canvas_w = self.viewer.width() or 800
-            canvas_h = self.viewer.height() or 600
-            
-            scale = min(canvas_w / pix.width, canvas_h / pix.height, 1.0)
-            new_w = int(pix.width * scale)
-            new_h = int(pix.height * scale)
-            
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-            
-            qimage = QImage(img.tobytes(), new_w, new_h, new_w * 3, QImage.Format.Format_RGB888)
+            with fitz.open(path) as doc:
+                self._doc_pdf = path
+                self._doc_pages = doc.page_count
+                self._doc_page = max(0, min(page_no, doc.page_count - 1))
+                page = doc[self._doc_page]
+                canvas_w = self.viewer.width() or 800
+                canvas_h = self.viewer.height() or 600
+                ratio = self.devicePixelRatioF() or 1.0
+                zoom = min(canvas_w / page.rect.width, canvas_h / page.rect.height) * ratio
+                zoom = max(0.2, min(zoom, 4.0))
+                pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+                qimage = QImage(pix.samples, pix.width, pix.height, pix.stride,
+                                QImage.Format.Format_RGB888).copy()
             self.current_pixmap = QPixmap.fromImage(qimage)
             self.viewer.set_pixmap(self.current_pixmap)
-            
-            doc.close()
+            if self._doc_source is not None:
+                self._update_size_label(self._doc_source)
         except Exception as e:
             self.viewer.clear()
             self.viewer.setText(f"Error loading PDF\n{e}")
-    
+
     def _sort_file(self, dest: FolderConfig, btn: QPushButton = None) -> None:
         source, current = self._get_current_file()
         if source is None or current is None:
@@ -1598,6 +1749,17 @@ class MainWindow(QMainWindow):
         else:
             MessageDialog("Error", f"Failed to move file: {current.name}", "error", self).exec()
     
+    def _trash_file(self) -> None:
+        source, current = self._get_current_file()
+        if source is None or current is None:
+            return
+        self.video_player.stop()
+        if self.session.trash_current_file(source):
+            self._flash_button(self.trash_btn)
+            self._update_viewer()
+        else:
+            MessageDialog("Error", f"Failed to move file to trash: {current.name}", "error", self).exec()
+
     def _flash_button(self, btn: QPushButton) -> None:
         original_style = btn.styleSheet()
         btn.setStyleSheet(original_style + "border: 2px solid #4a9eff;")
@@ -1636,7 +1798,13 @@ class MainWindow(QMainWindow):
                 Qt.Key.Key_Backspace: "Backspace",
                 Qt.Key.Key_Delete: "Delete",
             }
+            if Qt.Key.Key_F1 <= key <= Qt.Key.Key_F12:
+                key_text += f"F{key - Qt.Key.Key_F1 + 1}"
             key_text += key_map.get(key, "")
+
+        if key in (Qt.Key.Key_PageDown, Qt.Key.Key_PageUp) and not modifiers:
+            self._change_page(1 if key == Qt.Key.Key_PageDown else -1)
+            return
         
         if key_text == self.keybindings.get('previous', 'Left'):
             self._previous_file()
@@ -1644,6 +1812,8 @@ class MainWindow(QMainWindow):
             self._next_file()
         elif key_text == self.keybindings.get('undo', 'Z'):
             self._revert_last()
+        elif key_text and key_text == self.keybindings.get('trash', 'Delete'):
+            self._trash_file()
         elif key_text in self._dest_buttons:
             btn = self._dest_buttons[key_text]
             for i, dest in enumerate(self.session.destination_folders):

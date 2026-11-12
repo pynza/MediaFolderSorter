@@ -15,7 +15,11 @@ MediaFolderSorter is a simple yet powerful tool for organizing your media files.
 ### Media Preview
 - **Images**: PNG, JPG, JPEG, GIF, BMP, WebP - automatic scaling to fit viewport
 - **Videos**: MP4, WebM, MOV, AVI, MKV, FLV - with built-in player controls
-- **PDFs**: First page preview using PyMuPDF
+- **PDFs**: Page preview using PyMuPDF — flip pages with **PgUp/PgDn**
+- **Office documents** (ODT/ODS/ODP/ODG, DOC/DOCX, XLS/XLSX, PPT/PPTX, RTF): embedded thumbnail shown instantly, then full pages rendered via LibreOffice (headless) and cached in `~/.cache/mediafoldersorter/`. The next document in the queue is pre-rendered in the background.
+- **Text**: TXT, logs, CSV, JSON, YAML, source code… (and any file that looks like UTF-8 text) in a monospace viewer
+- **Markdown**: rendered (MD, MARKDOWN)
+- **More images**: TIFF, ICO, SVG
 
 ![Media Preview](https://github.com/user-attachments/assets/098beb3d-b4e6-4e41-bd7c-851f125625ac)
 
@@ -23,7 +27,12 @@ MediaFolderSorter is a simple yet powerful tool for organizing your media files.
 Assign custom keyboard and mouse shortcuts to any destination folder for lightning-fast sorting.
 
 - **Navigation**: Previous/Next file
-- **Undo**: Revert last sort
+- **Undo**: Revert last sort or trash
+- **Trash**: Move the current file to the system trash (default key: `Delete`), undoable
+
+### Keep / trash mode
+Destination folders are optional: with only source folders you get a simple
+keep (Next) / trash (Delete) workflow, like photo-cleanup apps.
 - **Destinations**: Assign any key
 
 ![Keybindings configuration dialog](https://github.com/user-attachments/assets/6fb3fe79-75b3-4f6a-a0a8-a19dc34bc860)
@@ -40,7 +49,7 @@ Assign custom keyboard and mouse shortcuts to any destination folder for lightni
 
 ```bash
 # Clone the repository
-git clone https://github.com/pinzauti/MediaFolderSorter.git
+git clone https://github.com/pynza/MediaFolderSorter.git
 cd MediaFolderSorter
 
 # Create virtual environment (recommended)
@@ -51,6 +60,10 @@ source venv/bin/activate  # Linux/macOS
 # Install dependencies
 pip install -r requirements.txt
 ```
+
+Optional, for office document previews: LibreOffice (`soffice` on `PATH`),
+e.g. `sudo apt install libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress`.
+On Debian/Ubuntu (X11/XWayland) Qt6 also needs `libxcb-cursor0`.
 
 ## Usage
 

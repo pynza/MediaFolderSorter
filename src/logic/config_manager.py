@@ -16,6 +16,7 @@ class KeyBindings:
     previous: str = "Left"
     next: str = "Right"
     undo: str = "Z"
+    trash: str = "Delete"
     destinations: dict[str, str] = field(default_factory=dict)
 
 
@@ -58,6 +59,7 @@ class ConfigManager:
             kb.previous = keybindings.get('previous', 'Left')
             kb.next = keybindings.get('next', 'Right')
             kb.undo = keybindings.get('undo', 'Z')
+            kb.trash = keybindings.get('trash', 'Delete')
             kb.destinations = {k.replace('dest_', ''): v for k, v in keybindings.items() if k.startswith('dest_')}
 
         config = AppConfig(
@@ -96,6 +98,7 @@ class ConfigManager:
             previous=kb_data.get('previous', 'Left'),
             next=kb_data.get('next', 'Right'),
             undo=kb_data.get('undo', 'Z'),
+            trash=kb_data.get('trash', 'Delete'),
             destinations=kb_data.get('destinations', {})
         )
 
@@ -163,6 +166,7 @@ class ConfigManager:
             kb.previous = keybindings.get('previous', 'Left')
             kb.next = keybindings.get('next', 'Right')
             kb.undo = keybindings.get('undo', 'Z')
+            kb.trash = keybindings.get('trash', 'Delete')
             kb.destinations = {k.replace('dest_', ''): v for k, v in keybindings.items() if k.startswith('dest_')}
         
         config = AppConfig(
