@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QScrollArea, QStatusBar, QStackedWidget, QInputDialog,
     QListWidgetItem, QDialog, QSlider, QFormLayout, QLineEdit, QTextBrowser
 )
-from PyQt6.QtCore import pyqtSignal, QTimer, QUrl, Qt, QSize, QObject
+from PyQt6.QtCore import pyqtSignal, QTimer, QUrl, Qt, QSize, QObject, QEvent
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QFont, QIcon, QImage, QKeyEvent, QMouseEvent
@@ -1392,6 +1392,7 @@ class MainWindow(QMainWindow):
         self.converter = DocConverter(self)
         self.converter.converted.connect(self._on_doc_converted)
         self.converter.failed.connect(self._on_doc_failed)
+        QApplication.instance().installEventFilter(self)
 
     def closeEvent(self, event) -> None:
         self.converter.shutdown()
@@ -1771,11 +1772,25 @@ class MainWindow(QMainWindow):
         except RuntimeError:
             pass
     
+    def eventFilter(self, obj, event) -> bool:
+        # Buttons, sliders and the text viewer consume arrow keys (focus
+        # navigation) before they reach the window, so sorting keys are
+        # intercepted application-wide while the sorting page is shown.
+        if (event.type() == QEvent.Type.KeyPress
+                and self.pages.currentIndex() == 1
+                and isinstance(obj, QWidget)
+                and obj.window() is self
+                and not isinstance(obj, QLineEdit)):
+            if self._handle_sort_key(event):
+                return True
+        return super().eventFilter(obj, event)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        if self.pages.currentIndex() != 1:
+        if self.pages.currentIndex() != 1 or not self._handle_sort_key(event):
             super().keyPressEvent(event)
-            return
-        
+
+    def _handle_sort_key(self, event: QKeyEvent) -> bool:
+        """Run the action bound to this key; return True if one ran."""
         key = event.key()
         modifiers = event.modifiers()
         key_text = ""
@@ -1803,9 +1818,13 @@ class MainWindow(QMainWindow):
             key_text += key_map.get(key, "")
 
         if key in (Qt.Key.Key_PageDown, Qt.Key.Key_PageUp) and not modifiers:
-            self._change_page(1 if key == Qt.Key.Key_PageDown else -1)
-            return
-        
+            if self._doc_pdf is not None and self._doc_pages > 1:
+                self._change_page(1 if key == Qt.Key.Key_PageDown else -1)
+                return True
+            return False
+
+        if not key_text:
+            return False
         if key_text == self.keybindings.get('previous', 'Left'):
             self._previous_file()
         elif key_text == self.keybindings.get('next', 'Right'):
@@ -1821,7 +1840,8 @@ class MainWindow(QMainWindow):
                     self._sort_file(dest, btn)
                     break
         else:
-            super().keyPressEvent(event)
+            return False
+        return True
     
     def _skip_file(self) -> None:
         source, _ = self._get_current_file()
