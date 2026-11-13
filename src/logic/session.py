@@ -6,10 +6,13 @@ from src.logic.file_manager import FileManager
 
 
 class MoveHistory:
-    def __init__(self, file_path: Path, source_path: Path, dest_path: Path):
+    def __init__(self, file_path: Path, source_path: Path, dest_path: Optional[Path],
+                 trashed_path: Optional[Path] = None):
         self.file_path = file_path
         self.source_path = source_path
         self.dest_path = dest_path
+        # Set when the file was moved to the trash instead of a destination
+        self.trashed_path = trashed_path
 
 
 class Session:
@@ -52,6 +55,19 @@ class Session:
             self._advance_to_next(source_config, current_file.name)
         return success
 
+    def trash_current_file(self, source_config: FolderConfig) -> bool:
+        current_file = source_config.current_file
+        if current_file is None:
+            return False
+
+        trashed = self._file_manager.trash_file(current_file)
+        if trashed is None:
+            return False
+        self._history.append(MoveHistory(current_file, source_config.path, None, trashed))
+        source_config.load_files()
+        self._advance_to_next(source_config, current_file.name)
+        return True
+
     def _advance_to_next(self, source_config: FolderConfig, sorted_name: str) -> None:
         for i, f in enumerate(source_config.files):
             if f.name > sorted_name:
@@ -63,17 +79,29 @@ class Session:
             return False
         
         move = self._history.pop()
+        if move.trashed_path is not None:
+            if self._file_manager.restore_from_trash(move.trashed_path, move.file_path):
+                self._reload_source(move.source_path, move.file_path)
+                return True
+            self._history.append(move)
+            return False
         if not move.file_path.exists():
             dest_file = move.dest_path / move.file_path.name
             if dest_file.exists():
                 success = self._file_manager.move_file(dest_file, move.source_path)
                 if success:
-                    for source in self.source_folders:
-                        if source.path == move.source_path:
-                            source.load_files()
-                            return True
+                    self._reload_source(move.source_path, move.file_path)
+                    return True
         self._history.append(move)
         return False
+
+    def _reload_source(self, source_path: Path, focus: Optional[Path] = None) -> None:
+        for source in self.source_folders:
+            if source.path == source_path:
+                source.load_files()
+                if focus is not None and focus in source.files:
+                    source.file_index = source.files.index(focus)
+                return
 
     def get_total_files(self) -> int:
         return sum(len(f.files) for f in self.source_folders)
